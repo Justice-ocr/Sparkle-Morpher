@@ -29,16 +29,17 @@ import java.util.Map;
  *
  * <p>自 {@code ModelImportFilePicker} 等价搬运：持有选择状态（picking / lastError / completed /
  * pickerStartedMs）、平台检测、Android Activity 发现、选择结果落盘与目录打包，并按既定顺序把
- * 平台入口委托给五个 Backend：
+ * 平台入口委托给对应的 Backend：
  * <ul>
  *   <li>{@link FclPickerBackend} — FCL FileBrowser / FCL system picker</li>
  *   <li>{@link AndroidDocumentPickerBackend} — AndroidX / system Intent document picker</li>
  *   <li>{@link LauncherBridgeBackend} — 启动器文件夹桥（Android 桥接目录轮询）</li>
+ *   <li>{@link SdlPickerBackend} — 26.3 自带 SDL 的系统文件对话框</li>
  *   <li>{@link TinyFdBackend} — LWJGL tinyfd 原生对话框</li>
  *   <li>{@link DesktopPickerBackend} — AWT / Swing JVM 文件对话框</li>
  * </ul>
  *
- * <p>行为与搬运前逐字等价：同一调用顺序、同一文案、同一异常。并发语义上，原本由
+ * <p>并发语义上，原本由
  * {@code ModelImportFilePicker.class} 这一把锁保护的状态现集中于本类；Backend 只在本包内协作。
  */
 public final class FilePickerCoordinator {
@@ -73,6 +74,9 @@ public final class FilePickerCoordinator {
     }
 
     public static synchronized Component pickYsmFile() {
+        if (SdlPickerBackend.isPicking()) {
+            return Component.translatable("gui.sparkle_morpher.import.error.picker_open");
+        }
         if (picking) {
             if (canReplaceActivePicker()) {
                 LauncherBridgeBackend.stopLauncherBridgeImport();
@@ -85,6 +89,10 @@ public final class FilePickerCoordinator {
         picking = true;
         pickerStartedMs = nowMillis();
         lastError = Component.empty();
+
+        rememberPickerProbe("request: os=" + System.getProperty("os.name")
+                + ", android=" + isAndroidRuntime()
+                + ", awt.headless=" + System.getProperty("java.awt.headless"));
 
         if (FclPickerBackend.tryStartFclSystemPicker()) {
             return null;
@@ -106,6 +114,10 @@ public final class FilePickerCoordinator {
             return null;
         }
 
+        if (SdlPickerBackend.tryStartSystemPicker()) {
+            return null;
+        }
+
         if (TinyFdBackend.tryStartTinyFileDialog()) {
             return null;
         }
@@ -120,6 +132,7 @@ public final class FilePickerCoordinator {
     }
 
     public static synchronized void cancelPicking() {
+        SdlPickerBackend.cancelPicking();
         LauncherBridgeBackend.stopLauncherBridgeImport();
         completed.clear();
         picking = false;
@@ -416,6 +429,12 @@ public final class FilePickerCoordinator {
         picking = false;
     }
 
+    static synchronized void completeFiles(List<PickedFile> files) {
+        completed.addAll(files);
+        picking = false;
+        pickerStartedMs = 0L;
+    }
+
     static synchronized void setError(Component error) {
         lastError = error == null ? Component.empty() : error;
         picking = false;
@@ -430,7 +449,7 @@ public final class FilePickerCoordinator {
     }
 
     static synchronized void rememberPickerProbe(String message) {
-        YesSteveModel.LOGGER.info("[SM] Android file picker probe: {}", message);
+        YesSteveModel.LOGGER.info("[SM] File picker probe: {}", message);
     }
 
     static String safeMessage(Throwable t) {
