@@ -9,7 +9,6 @@ import com.micaftic.morpher.core.model.lifecycle.ScreenRequestToken;
 import com.micaftic.morpher.cloud.client.CloudClientRuntime;
 import com.micaftic.morpher.cloud.client.CloudModelSelectionStore;
 import com.micaftic.morpher.capability.PlayerCapability;
-
 import com.micaftic.morpher.client.ClientModelManager;
 import com.micaftic.morpher.client.PrivacyMode;
 import com.micaftic.morpher.client.gui.resource.ModelRepoClient;
@@ -111,7 +110,6 @@ public final class ModernPlayerModelScreenController {
     private final List<ModelRepoEntry> resourceEntries = new ArrayList<>();
     private final Set<String> selectedResourceUrls = new LinkedHashSet<>();
     private final Queue<FilePickerCoordinator.PickedFile> pendingImports = new ArrayDeque<>();
-    private boolean localImportInProgress;
     private final ScreenGenerationGate screenGeneration = new ScreenGenerationGate();
 
     public ModernPlayerModelScreenController(ModelPanelState state, Host host) {
@@ -532,6 +530,17 @@ public final class ModernPlayerModelScreenController {
         }
     }
 
+    /** Opens the separate on-disk directory that stores imported Cloud model copies. */
+    public void openCloudModelFolder() {
+        try {
+            Files.createDirectories(ModelStoragePaths.cloudModels());
+            ClientUiUtil.openFile(ModelStoragePaths.cloudModels().toFile());
+            this.host.postStatus(Component.literal(ModelStoragePaths.cloudModels().toString()), ChatFormatting.GRAY);
+        } catch (IOException e) {
+            this.host.postStatus(Component.translatable("gui.sparkle_morpher.import.error.open_folder", e.getMessage()), ChatFormatting.RED);
+        }
+    }
+
     public boolean isAllowUpload() {
         return ClientModelManager.isAllowUpload();
     }
@@ -658,7 +667,7 @@ public boolean cloudAvailable() { return CloudClientRuntime.state(state.selected
             if (!this.screenGeneration.isCurrent(generation)) return;
             if (CloudClientRuntime.state(instanceId) != expectedRuntime) { callback.accept(Component.translatable("gui.sparkle_morpher.cloud.disconnected")); return; }
             if (failure != null) { callback.accept(Component.translatable("gui.sparkle_morpher.cloud.asset_download_failed", rootMessage(failure))); return; }
-            ClientModelManager.importLocalModel(modelId, CloudAssetImportName.fileName(summary), bytes, error -> {
+            ClientModelManager.importCloudModel(modelId, CloudAssetImportName.fileName(summary), bytes, error -> {
                 if (!this.screenGeneration.isCurrent(generation)) return;
                 if (CloudClientRuntime.state(instanceId) != expectedRuntime) { callback.accept(Component.translatable("gui.sparkle_morpher.cloud.disconnected")); return; }
                 callback.accept(error);

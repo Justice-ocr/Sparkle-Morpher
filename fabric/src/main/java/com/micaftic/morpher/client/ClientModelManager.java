@@ -176,15 +176,9 @@ static final java.security.SecureRandom SECURE_RANDOM = new java.security.Secure
 
     private static final ClientModelResidency RESIDENCY = new ClientModelResidency();
     private static volatile Map<String, ModelPackData> modelPackMap = new Object2ReferenceOpenHashMap<>();
-
-
     static final Map<String, File> cachedModelFiles = new ConcurrentHashMap<>();
-
     private static final KeyedRequestLeaseRegistry<String> localImportRequests = new KeyedRequestLeaseRegistry<>();
     private static final ConcurrentHashMap<String, LocalModelCatalog.Entry> lazyModelSources = new ConcurrentHashMap<>();
-
-
-
 
     // ---- 模型处理失败日志去重 ----
     // 同一模型短时间反复失败（如损坏模型被反复重载）时只打印首条完整堆栈，
@@ -205,6 +199,7 @@ static final java.security.SecureRandom SECURE_RANDOM = new java.security.Secure
      * 从 ClientModelManager 抽取为独立可测组件。
      */
     private static final LocalModelImportStore LOCAL_IMPORT_STORE = new LocalModelImportStore(ModelStoragePaths.custom());
+    private static final LocalModelImportStore CLOUD_IMPORT_STORE = new LocalModelImportStore(ModelStoragePaths.cloudModels());
     private static final LocalModelCatalog LOCAL_MODEL_CATALOG = new LocalModelCatalog();
     private static final long MODEL_PROCESS_FAILURE_SUPPRESS_MILLIS = 5L * 60L * 1000L;
 
@@ -687,6 +682,20 @@ public static Optional<Path> getLocalModelSourcePath(String modelId) {
     }
 
     public static void importLocalModel(String modelId, String fileName, byte[] data, @Nullable Consumer<Component> callback) {
+        importModel(modelId, fileName, data, callback, LOCAL_IMPORT_STORE, false);
+    }
+
+    /** Persists an imported Cloud revision outside the user's custom-model directory. */
+    public static void importCloudModel(String modelId, String fileName, byte[] data, @Nullable Consumer<Component> callback) {
+        if (!com.micaftic.morpher.core.model.CloudAssetIdentity.isRuntimeModelId(modelId)) {
+            if (callback != null) callback.accept(Component.translatable("gui.sparkle_morpher.import.error.invalid_model_id_or_hash"));
+            return;
+        }
+        importModel(modelId, fileName, data, callback, CLOUD_IMPORT_STORE, true);
+    }
+
+    private static void importModel(String modelId, String fileName, byte[] data, @Nullable Consumer<Component> callback,
+                                    LocalModelImportStore importStore, boolean cloudImport) {
         final String modelKey = LocalModelCatalog.canonicalKey(modelId);
         com.micaftic.morpher.core.model.lifecycle.LocalImportCompletion completion =
                 new com.micaftic.morpher.core.model.lifecycle.LocalImportCompletion(callback,
@@ -710,7 +719,7 @@ public static Optional<Path> getLocalModelSourcePath(String modelId) {
             Component error = null;
             try {
                 ModelMemoryProfiler.logBytes("local-import-read", modelKey, importData);
-                try (LocalModelImportStore.PreparedImport prepared = LOCAL_IMPORT_STORE.prepare(modelKey, fileName, importData)) {
+                try (LocalModelImportStore.PreparedImport prepared = importStore.prepare(modelKey, fileName, importData)) {
                     if (prepared == null) throw new IOException("Failed to prepare local import");
                     ImportCommitFlow.Outcome<LocalModelImportStore.CommitResult> outcome;
                     outcome = com.micaftic.morpher.core.importing.ImportCoordinator.importPrepared(
@@ -732,7 +741,7 @@ public static Optional<Path> getLocalModelSourcePath(String modelId) {
                                                     && (importLease == null || localImportRequests.isCurrent(importLease)),
                                             prepared::commit,
                                             (assembly, committed) -> publishImportedAssembly(
-                                                    modelKey, assembly, committed.persistedPath()),
+                                                    modelKey, assembly, committed.persistedPath(), cloudImport),
                                             assembly -> releaseModelAssembly(modelKey, assembly));
                                 }
                             });
@@ -759,7 +768,7 @@ public static Optional<Path> getLocalModelSourcePath(String modelId) {
                     }
                 }
                 ((Executor) Minecraft.getInstance()).execute(ClientModelManager::flushPendingModels);
-                if (error == null) YesSteveModel.LOGGER.info("[SM] Imported local model: {}", modelKey);
+                if (error == null) YesSteveModel.LOGGER.info("[SM] Imported {} model: {}", cloudImport ? "Cloud" : "local", modelKey);
             } catch (Exception e) {
                 YesSteveModel.LOGGER.error("[SM] Failed to import local model: {}", modelKey, e);
                 error = Component.translatable("gui.sparkle_morpher.import.error.local_import_failed", e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
@@ -778,15 +787,32 @@ public static Optional<Path> getLocalModelSourcePath(String modelId) {
         reloadLocalModels(callback, true);
     }
 
+    /** Refreshes upload sources without parsing every local model, regardless of the lazy-load setting. */
+    public static void reloadLocalModelsForUpload(@Nullable Consumer<Component> callback) {
+        reloadLocalModels(callback, true, false);
+    }
+
     public static void reloadLocalModels(@Nullable Consumer<Component> callback, boolean restoreSelection) {
+        reloadLocalModels(callback, restoreSelection, true);
+    }
+
+    private static void reloadLocalModels(@Nullable Consumer<Component> callback,
+                                          boolean restoreSelection,
+                                          boolean loadAllModels) {
         long scanRevision = LOCAL_MODEL_SCAN_REVISION.begin();
         submitModelTask(() -> {
             Component error = null;
             try {
                 LinkedHashMap<String, LocalModelCatalog.Entry> catalog = new LinkedHashMap<>();
                 LinkedHashMap<String, Path> customSources = new LinkedHashMap<>();
+                List<Path> migratedCloudModels = com.micaftic.morpher.core.storage.CloudModelStorageMigration.migrate(
+                        ModelStoragePaths.custom(), ModelStoragePaths.cloudModels());
+                if (!migratedCloudModels.isEmpty()) {
+                    YesSteveModel.LOGGER.info("[SM] Moved {} legacy Cloud model file(s) into cloud_models", migratedCloudModels.size());
+                }
                 scanLocalModelSources(ModelStoragePaths.built(), false, catalog, customSources);
                 scanLocalModelSources(ModelStoragePaths.custom(), false, catalog, customSources);
+                scanLocalModelSources(ModelStoragePaths.cloudModels(), false, catalog, customSources);
                 scanLocalModelSources(ModelStoragePaths.auth(), true, catalog, customSources);
                 if (!LOCAL_MODEL_SCAN_REVISION.isCurrent(scanRevision)) {
                     finishSupersededModelScan(callback);
@@ -800,9 +826,11 @@ public static Optional<Path> getLocalModelSourcePath(String modelId) {
                 LocalModelCatalog.Diff candidateDiff = LocalModelCatalog.diff(lazyModelSources, catalog);
                 Set<String> staleIds = new HashSet<>(candidateDiff.staleIds());
                 List<String> failedModelIds = new ArrayList<>();
-                if (!isLazyModelLoading()) {
+                if (loadAllModels && !isLazyModelLoading()) {
                     for (Map.Entry<String, LocalModelCatalog.Entry> entry : catalog.entrySet()) {
                         if (!LOCAL_MODEL_SCAN_REVISION.isCurrent(scanRevision)) break;
+                        // Cloud revisions are indexed on refresh but materialized only when selected/used.
+                        if (com.micaftic.morpher.core.model.CloudAssetIdentity.isRuntimeModelId(entry.getKey())) continue;
                         if (!isScanSourceCurrent(scanRevision, entry.getValue())) continue;
                         ModelAssembly current = RESIDENCY.assemblies().get(entry.getKey());
                         if (staleIds.contains(entry.getKey()) || current == null || !current.getPresentationCapabilities().runtimeResident()) {
@@ -1008,14 +1036,15 @@ public static Optional<Path> getLocalModelSourcePath(String modelId) {
         return lower.endsWith(".gltf") || lower.endsWith(".glb");
     }
 
-    private static void publishImportedAssembly(String modelId, ModelAssembly runtimeModel, Path persisted) throws IOException {
+    private static void publishImportedAssembly(String modelId, ModelAssembly runtimeModel, Path persisted,
+                                                boolean cloudImport) throws IOException {
         long fingerprint = LocalModelCatalog.fingerprint(persisted);
         LocalModelCatalog.Entry sourceEntry = new LocalModelCatalog.Entry(
                 persisted, null, false, false, fingerprint, null, null);
-        localOnlyModelIds.add(modelId);
+        if (!cloudImport) localOnlyModelIds.add(modelId);
         touchModel(modelId);
         ResourceLifecycleStats.onModelAssemblyLoaded(modelId);
-        localModelSourcePaths.put(modelId, persisted.toAbsolutePath().normalize());
+        if (!cloudImport) localModelSourcePaths.put(modelId, persisted.toAbsolutePath().normalize());
         lazyModelSources.put(modelId, sourceEntry);
         pendingModelQueue.add(new PendingModelPublication(runtimeModel, modelId, -1L, null, null));
         try {
@@ -1324,7 +1353,9 @@ public static Optional<Path> getLocalModelSourcePath(String modelId) {
         lazyModelSources.entrySet().removeIf(entry -> !entry.getValue().remote);
         lazyModelSources.putAll(diff.catalog());
         localOnlyModelIds.clear();
-        localOnlyModelIds.addAll(validIds);
+        for (String id : validIds) {
+            if (!com.micaftic.morpher.core.model.CloudAssetIdentity.isRuntimeModelId(id)) localOnlyModelIds.add(id);
+        }
         return diff;
     }
 
@@ -1617,7 +1648,7 @@ public static Optional<Path> getLocalModelSourcePath(String modelId) {
        Minecraft minecraft = Minecraft.getInstance();
         long residentGpuModels = RESIDENCY.assemblies().values().stream()
                 .filter(Objects::nonNull)
-                .filter(assembly -> assembly.getPresentationCapabilities().gpuTrimAvailable())
+                 .filter(assembly -> assembly.getPresentationCapabilities().gpuTrimAvailable())
                 .count();
         if (residentGpuModels <= maxCachedGpuModels) {
            return;
@@ -1626,7 +1657,7 @@ public static Optional<Path> getLocalModelSourcePath(String modelId) {
         long ttlMillis = ConfigPolicies.memory().unusedModelTtlSeconds() * 1000L;
         Set<String> protectedModels = collectProtectedModelIds(minecraft);
        RESIDENCY.assemblies().entrySet().stream()
-                .filter(entry -> entry.getValue() != null && entry.getValue().getPresentationCapabilities().runtimeResident())
+                .filter(entry -> entry.getValue() != null && entry.getValue().getPresentationCapabilities().gpuTrimAvailable())
                .filter(entry -> canTrimGpuCache(entry.getKey(), entry.getValue(), protectedModels, now, ttlMillis))
                .sorted(Comparator.comparingLong(entry -> RESIDENCY.lastUsedAt().getOrDefault(entry.getKey(), 0L)))
                 .limit(Math.max(1L, residentGpuModels - maxCachedGpuModels))

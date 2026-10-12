@@ -29,17 +29,16 @@ import java.util.Map;
  *
  * <p>自 {@code ModelImportFilePicker} 等价搬运：持有选择状态（picking / lastError / completed /
  * pickerStartedMs）、平台检测、Android Activity 发现、选择结果落盘与目录打包，并按既定顺序把
- * 平台入口委托给对应的 Backend：
+ * 平台入口委托给五个 Backend：
  * <ul>
  *   <li>{@link FclPickerBackend} — FCL FileBrowser / FCL system picker</li>
  *   <li>{@link AndroidDocumentPickerBackend} — AndroidX / system Intent document picker</li>
  *   <li>{@link LauncherBridgeBackend} — 启动器文件夹桥（Android 桥接目录轮询）</li>
- *   <li>{@link SdlPickerBackend} — 26.3 自带 SDL 的系统文件对话框</li>
  *   <li>{@link TinyFdBackend} — LWJGL tinyfd 原生对话框</li>
  *   <li>{@link DesktopPickerBackend} — AWT / Swing JVM 文件对话框</li>
  * </ul>
  *
- * <p>并发语义上，原本由
+ * <p>行为与搬运前逐字等价：同一调用顺序、同一文案、同一异常。并发语义上，原本由
  * {@code ModelImportFilePicker.class} 这一把锁保护的状态现集中于本类；Backend 只在本包内协作。
  */
 public final class FilePickerCoordinator {
@@ -74,9 +73,6 @@ public final class FilePickerCoordinator {
     }
 
     public static synchronized Component pickYsmFile() {
-        if (SdlPickerBackend.isPicking()) {
-            return Component.translatable("gui.sparkle_morpher.import.error.picker_open");
-        }
         if (picking) {
             if (canReplaceActivePicker()) {
                 LauncherBridgeBackend.stopLauncherBridgeImport();
@@ -89,10 +85,6 @@ public final class FilePickerCoordinator {
         picking = true;
         pickerStartedMs = nowMillis();
         lastError = Component.empty();
-
-        rememberPickerProbe("request: os=" + System.getProperty("os.name")
-                + ", android=" + isAndroidRuntime()
-                + ", awt.headless=" + System.getProperty("java.awt.headless"));
 
         if (FclPickerBackend.tryStartFclSystemPicker()) {
             return null;
@@ -114,10 +106,6 @@ public final class FilePickerCoordinator {
             return null;
         }
 
-        if (SdlPickerBackend.tryStartSystemPicker()) {
-            return null;
-        }
-
         if (TinyFdBackend.tryStartTinyFileDialog()) {
             return null;
         }
@@ -132,7 +120,6 @@ public final class FilePickerCoordinator {
     }
 
     public static synchronized void cancelPicking() {
-        SdlPickerBackend.cancelPicking();
         LauncherBridgeBackend.stopLauncherBridgeImport();
         completed.clear();
         picking = false;
@@ -384,6 +371,40 @@ public final class FilePickerCoordinator {
         return new PickedFile(baseName + ".zip", out.toByteArray());
     }
 
+    /** Packs directly to disk so batch upload queues never retain model ZIP bytes in heap. */
+    public static long packDirectoryTo(Path dir, Path destination, int maxPackedBytes) throws IOException {
+        if (dir == null || !Files.isDirectory(dir)) throw new IOException("Not a directory: " + dir);
+        Path root = dir.toAbsolutePath().normalize();
+        AtomicInteger count = new AtomicInteger();
+        long perfStart = PerformanceProfiler.start();
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(destination));
+             Stream<Path> stream = Files.walk(root, MAX_FOLDER_DEPTH)) {
+            for (var iterator = stream.filter(Files::isRegularFile).iterator(); iterator.hasNext();) {
+                Path path = iterator.next();
+                Path normalized = path.toAbsolutePath().normalize();
+                if (!normalized.startsWith(root)) throw new IOException("Invalid path outside import folder: " + path);
+                if (count.incrementAndGet() > MAX_FOLDER_FILE_COUNT) throw new IOException("Too many files in model folder");
+                String entryName = root.relativize(normalized).toString().replace('\\', '/');
+                if (entryName.isBlank() || entryName.startsWith("/") || entryName.contains("../"))
+                    throw new IOException("Invalid zip entry path: " + entryName);
+                zip.putNextEntry(new ZipEntry(entryName));
+                Files.copy(normalized, zip);
+                zip.closeEntry();
+            }
+        } catch (IOException | RuntimeException error) {
+            Files.deleteIfExists(destination);
+            throw error;
+        }
+        long size = Files.size(destination);
+        if (maxPackedBytes > 0 && size > maxPackedBytes) {
+            Files.deleteIfExists(destination);
+            throw new PackedSizeLimitExceededException(maxPackedBytes);
+        }
+        PerformanceProfiler.logElapsed("pack_directory", root.getFileName() == null ? "model" : root.getFileName().toString(),
+                perfStart, "files=" + count.get() + " bytes=" + size);
+        return size;
+    }
+
     private static void checkPackedSize(ByteArrayOutputStream out, int maxPackedBytes) throws PackedSizeLimitExceededException {
         if (maxPackedBytes > 0 && out.size() > maxPackedBytes) {
             throw new PackedSizeLimitExceededException(maxPackedBytes);
@@ -449,7 +470,7 @@ public final class FilePickerCoordinator {
     }
 
     static synchronized void rememberPickerProbe(String message) {
-        YesSteveModel.LOGGER.info("[SM] File picker probe: {}", message);
+        YesSteveModel.LOGGER.info("[SM] Android file picker probe: {}", message);
     }
 
     static String safeMessage(Throwable t) {

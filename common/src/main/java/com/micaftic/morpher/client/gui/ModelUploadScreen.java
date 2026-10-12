@@ -246,8 +246,9 @@ public class ModelUploadScreen extends Screen implements ModelUploadSession.List
             try {
                 Path path = source.get();
                 if (Files.isDirectory(path)) {
-                    FilePickerCoordinator.PickedFile packed = FilePickerCoordinator.packDirectory(path);
-                    this.pendingLocalUploads.add(new LocalUploadFile(modelId, modelId + ".zip", packed.data()));
+                    Path packed = Files.createTempFile("spm-batch-upload-", ".zip");
+                    FilePickerCoordinator.packDirectoryTo(path, packed, -1);
+                    this.pendingLocalUploads.add(new LocalUploadFile(modelId, modelId + ".zip", packed, true));
                     queued++;
                     continue;
                 }
@@ -256,7 +257,7 @@ public class ModelUploadScreen extends Screen implements ModelUploadSession.List
                     this.error = Component.translatable("gui.sparkle_morpher.import.error.invalid_extension");
                     continue;
                 }
-                this.pendingLocalUploads.add(new LocalUploadFile(modelId, modelId + ext, Files.readAllBytes(path)));
+                this.pendingLocalUploads.add(new LocalUploadFile(modelId, modelId + ext, path, false));
                 queued++;
             } catch (IOException e) {
                 this.error = Component.translatable("gui.sparkle_morpher.import.error.read_file", e.getMessage());
@@ -285,8 +286,10 @@ public class ModelUploadScreen extends Screen implements ModelUploadSession.List
         }
         this.localStatus = Component.translatable("gui.sparkle_morpher.import.state.local_upload_ready", file.modelId());
         this.localStatusColor = ChatFormatting.GREEN;
-        Component uploadError = ModelUploadSession.start(file.modelId(), file.fileName(), file.data(), true, cloudVisibility());
+        Component uploadError = ModelUploadSession.start(file.modelId(), file.fileName(), file.source(),
+                cloudVisibility(), null, file.temporary());
         if (uploadError != null) {
+            if (file.temporary()) try { Files.deleteIfExists(file.source()); } catch (IOException ignored) { }
             this.serverStatus = Component.translatable("gui.sparkle_morpher.import.state.server_upload_failed", uploadError);
             this.serverStatusColor = ChatFormatting.RED;
             return false;
@@ -327,7 +330,7 @@ public class ModelUploadScreen extends Screen implements ModelUploadSession.List
         LocalUploadFile localUpload = this.pendingLocalUploads.poll();
         if (localUpload != null) {
             if (!uploadLocalModelFile(localUpload)) {
-                this.pendingLocalUploads.clear();
+                clearPendingLocalUploads();
             }
             return;
         }
@@ -559,7 +562,14 @@ public class ModelUploadScreen extends Screen implements ModelUploadSession.List
         return false;
     }
 
-    private record LocalUploadFile(String modelId, String fileName, byte[] data) {
+    private record LocalUploadFile(String modelId, String fileName, Path source, boolean temporary) {
+    }
+
+    private void clearPendingLocalUploads() {
+        LocalUploadFile pending;
+        while ((pending = this.pendingLocalUploads.poll()) != null) {
+            if (pending.temporary()) try { Files.deleteIfExists(pending.source()); } catch (IOException ignored) { }
+        }
     }
 
     private String cloudVisibility() {
@@ -574,6 +584,7 @@ public class ModelUploadScreen extends Screen implements ModelUploadSession.List
 
     @Override
     public void onClose() {
+        clearPendingLocalUploads();
         InputUtil.setScreen(this.parentScreen);
     }
 }
