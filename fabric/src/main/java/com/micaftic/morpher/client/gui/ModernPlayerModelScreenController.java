@@ -530,6 +530,17 @@ public final class ModernPlayerModelScreenController {
         }
     }
 
+    /** Opens the separate on-disk directory that stores imported Cloud model copies. */
+    public void openCloudModelFolder() {
+        try {
+            Files.createDirectories(ModelStoragePaths.cloudModels());
+            ClientUiUtil.openFile(ModelStoragePaths.cloudModels().toFile());
+            this.host.postStatus(Component.literal(ModelStoragePaths.cloudModels().toString()), ChatFormatting.GRAY);
+        } catch (IOException e) {
+            this.host.postStatus(Component.translatable("gui.sparkle_morpher.import.error.open_folder", e.getMessage()), ChatFormatting.RED);
+        }
+    }
+
     public boolean isAllowUpload() {
         return ClientModelManager.isAllowUpload();
     }
@@ -656,7 +667,7 @@ public boolean cloudAvailable() { return CloudClientRuntime.state(state.selected
             if (!this.screenGeneration.isCurrent(generation)) return;
             if (CloudClientRuntime.state(instanceId) != expectedRuntime) { callback.accept(Component.translatable("gui.sparkle_morpher.cloud.disconnected")); return; }
             if (failure != null) { callback.accept(Component.translatable("gui.sparkle_morpher.cloud.asset_download_failed", rootMessage(failure))); return; }
-            ClientModelManager.importLocalModel(modelId, CloudAssetImportName.fileName(summary), bytes, error -> {
+            ClientModelManager.importCloudModel(modelId, CloudAssetImportName.fileName(summary), bytes, error -> {
                 if (!this.screenGeneration.isCurrent(generation)) return;
                 if (CloudClientRuntime.state(instanceId) != expectedRuntime) { callback.accept(Component.translatable("gui.sparkle_morpher.cloud.disconnected")); return; }
                 callback.accept(error);
