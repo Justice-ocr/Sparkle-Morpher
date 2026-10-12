@@ -30,7 +30,7 @@ public class CloudUploadWorkspaceScreen extends Screen implements ModelUploadSes
             ACCENT = RoulettePanelStyle.BORDER, ERROR = RoulettePanelStyle.RED;
     private final Screen parent;
     private final Map<String, Path> sources = new LinkedHashMap<>();
-    private final Map<String, FilePickerCoordinator.PickedFile> localFiles = new LinkedHashMap<>();
+    private final Map<String, PickedUpload> localFiles = new LinkedHashMap<>();
     private final Set<String> selected = new LinkedHashSet<>();
     private final Map<String, String> states = new HashMap<>();
     private final Map<String, Component> failures = new HashMap<>();
@@ -197,7 +197,9 @@ public class CloudUploadWorkspaceScreen extends Screen implements ModelUploadSes
     private void removeSelectedFiles() {
         if (uploading) return;
         for (String id : new ArrayList<>(selected)) {
-            if (localFiles.remove(id) != null) {
+            PickedUpload removed = localFiles.remove(id);
+            if (removed != null) {
+                removed.cleanUp();
                 selected.remove(id);
                 states.remove(id);
                 failures.remove(id);
@@ -224,7 +226,7 @@ public class CloudUploadWorkspaceScreen extends Screen implements ModelUploadSes
         return items.stream().filter(id -> query.isEmpty() || rowName(id).toLowerCase(Locale.ROOT).contains(query)).toList();
     }
     private String rowName(String id) {
-        FilePickerCoordinator.PickedFile file = localFiles.get(id);
+        PickedUpload file = localFiles.get(id);
         return file == null ? id : file.fileName();
     }
     private void updateButtons() {
@@ -260,7 +262,7 @@ public class CloudUploadWorkspaceScreen extends Screen implements ModelUploadSes
         refreshing = true;
         status = Component.translatable("gui.sparkle_morpher.import.state.folder_reloading");
         updateButtons();
-        ClientModelManager.reloadLocalModels(error -> Minecraft.getInstance().execute(() -> {
+        ClientModelManager.reloadLocalModelsForUpload(error -> Minecraft.getInstance().execute(() -> {
             refreshing = false;
             status = error == null ? Component.translatable("gui.sparkle_morpher.import.state.folder_reloaded") : error;
             if (error == null) reloadSnapshot();
@@ -303,7 +305,7 @@ public class CloudUploadWorkspaceScreen extends Screen implements ModelUploadSes
             updateButtons(); return;
         }
         String id = activeId;
-        FilePickerCoordinator.PickedFile picked = localFiles.get(id);
+        PickedUpload picked = localFiles.get(id);
         Path source = sources.get(id);
         if (picked != null) {
             activeUploadModelId = modelIdFromFileName(picked.fileName());
@@ -319,17 +321,14 @@ public class CloudUploadWorkspaceScreen extends Screen implements ModelUploadSes
         preparation = CompletableFuture.supplyAsync(() -> {
             try {
                 if (picked != null) {
-                    Path temp = Files.createTempFile("spm-cloud-file-", ".upload");
-                    try {
-                        Files.write(temp, picked.data());
-                        return new PreparedUpload(temp, picked.fileName(), true);
-                    } catch (IOException | RuntimeException error) { Files.deleteIfExists(temp); throw error; }
+                    if (!Files.isRegularFile(picked.source())) throw new IOException("Picked upload file is missing");
+                    return new PreparedUpload(picked.source(), picked.fileName(), false);
                 }
                 if (source == null || !Files.exists(source)) throw new IOException("Local model source is missing: " + id);
                 if (!Files.isDirectory(source)) return new PreparedUpload(source, source.getFileName().toString(), false);
                 Path temp = Files.createTempFile("spm-cloud-folder-", ".zip");
                 try {
-                    Files.write(temp, FilePickerCoordinator.packDirectory(source).data());
+                    FilePickerCoordinator.packDirectoryTo(source, temp, -1);
                     return new PreparedUpload(temp, id + ".zip", true);
                 } catch (IOException | RuntimeException error) { Files.deleteIfExists(temp); throw error; }
             } catch (IOException error) { throw new java.util.concurrent.CompletionException(error); }
@@ -342,10 +341,21 @@ public class CloudUploadWorkspaceScreen extends Screen implements ModelUploadSes
         boolean added = false;
         while ((picked = FilePickerCoordinator.pollCompleted()) != null) {
             String key = "picked-file-" + (++nextPickedFileId);
-            localFiles.put(key, picked);
-            states.put(key, "waiting");
-            selected.add(key);
-            added = true;
+            try {
+                Path temp = Files.createTempFile("spm-cloud-picked-", ".upload");
+                try {
+                    Files.write(temp, picked.data());
+                    localFiles.put(key, new PickedUpload(temp, picked.fileName(), Files.size(temp)));
+                    states.put(key, "waiting");
+                    selected.add(key);
+                    added = true;
+                } catch (IOException | RuntimeException error) {
+                    Files.deleteIfExists(temp);
+                    status = Component.translatable("gui.sparkle_morpher.import.error.local_storage");
+                }
+            } catch (IOException error) {
+                status = Component.translatable("gui.sparkle_morpher.import.error.local_storage");
+            }
         }
         Component pickerError = FilePickerCoordinator.consumeLastError();
         if (!pickerError.getString().isEmpty()) status = pickerError;
@@ -446,10 +456,10 @@ public class CloudUploadWorkspaceScreen extends Screen implements ModelUploadSes
             else RoulettePanelStyle.border(g, innerX + 8, rowY + (rowH() - 9) / 2, 9, 9, MUTED);
             int textWidth = Math.max(1, innerW - 112);
             g.text(font, fit(Component.literal(rowName(id)), textWidth), innerX + 25, rowY + 5, TEXT, false);
-            FilePickerCoordinator.PickedFile picked = localFiles.get(id);
+            PickedUpload picked = localFiles.get(id);
             Path source = sources.get(id);
             String file = picked == null ? (source == null ? rowName(id) : source.getFileName().toString()) : picked.fileName();
-            if (rowH() >= 28) g.text(font, fit(Component.literal(picked == null ? file : formatBytes(picked.data().length)), textWidth), innerX + 25, rowY + 17, MUTED, false);
+            if (rowH() >= 28) g.text(font, fit(Component.literal(picked == null ? file : formatBytes(picked.size())), textWidth), innerX + 25, rowY + 17, MUTED, false);
             String state = states.getOrDefault(id, "waiting");
             Component stateText = label("state." + state);
             if (id.equals(activeId) && activeSession != null && !activeSession.isTerminal())
@@ -497,11 +507,18 @@ public class CloudUploadWorkspaceScreen extends Screen implements ModelUploadSes
         if (listening) { ModelUploadSession.removeListener(this); listening = false; }
     }
     @Override
-    public void onClose() { cancel(); InputUtil.setScreen(parent); }
+    public void onClose() { cancel(); cleanupPickedFiles(); InputUtil.setScreen(parent); }
     @Override
     public boolean isPauseScreen() { return false; }
     private record PreparedUpload(Path source, String fileName, boolean temporary) {
         void cleanUp() { if (temporary) try { Files.deleteIfExists(source); } catch (IOException ignored) { } }
+    }
+    private record PickedUpload(Path source, String fileName, long size) {
+        void cleanUp() { try { Files.deleteIfExists(source); } catch (IOException ignored) { } }
+    }
+    private void cleanupPickedFiles() {
+        localFiles.values().forEach(PickedUpload::cleanUp);
+        localFiles.clear();
     }
 
     private static String modelIdFromFileName(String fileName) {
@@ -511,7 +528,7 @@ public class CloudUploadWorkspaceScreen extends Screen implements ModelUploadSes
         return ModelIdUtil.normalizeImportModelId(stem);
     }
 
-    private static String formatBytes(int bytes) {
+    private static String formatBytes(long bytes) {
         return bytes < 1024 ? bytes + " B" : String.format(Locale.ROOT, "%.1f KB", bytes / 1024.0);
     }
 
