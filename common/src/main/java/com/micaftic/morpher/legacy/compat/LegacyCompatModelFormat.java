@@ -4,15 +4,32 @@ import com.micaftic.morpher.core.legacy.YesModelUtils;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 
-/** Compatibility boundary for the 1.2.x encrypted YSM container format. */
+/**
+ * Compatibility boundary for the 1.2.x encrypted YSM container format.
+ *
+ * <p>The local/cloud model pipeline must not depend on the legacy crypto
+ * implementation directly. This adapter is the only production entry point
+ * for reading the old container while the format remains supported.</p>
+ */
 public final class LegacyCompatModelFormat {
     private LegacyCompatModelFormat() {
     }
 
     public static int detectCryptoVersion(byte[] data) {
         return YesModelUtils.getYsmCryptoVersion(data);
+    }
+
+    /** Reads only the eight-byte YSM header; upload validation must not materialize an entire model. */
+    public static int detectCryptoVersion(Path file) throws IOException {
+        try (InputStream input = Files.newInputStream(file)) {
+            byte[] header = input.readNBytes(8);
+            return YesModelUtils.getYsmCryptoVersion(header);
+        }
     }
 
     public static Map<String, byte[]> read(byte[] data) throws IOException {
