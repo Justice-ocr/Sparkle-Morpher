@@ -18,7 +18,7 @@ import com.micaftic.morpher.client.texture.OuterFileTexture;
 import com.micaftic.morpher.config.ExtraPlayerRenderConfig;
 import com.micaftic.morpher.config.GeneralConfig;
 import com.micaftic.morpher.core.gui.UnifiedRouletteScreen;
-import com.micaftic.morpher.core.gpu.BlurStack;
+import com.micaftic.morpher.core.gui.VanillaUi;
 import com.micaftic.morpher.resource.models.AuthorInfo;
 import com.micaftic.morpher.resource.models.Metadata;
 import com.micaftic.morpher.util.InputUtil;
@@ -63,17 +63,17 @@ public class ModernPlayerModelScreen extends Screen {
     private SettingsPanel settingsPanel;
     private final String stateKeyValue;
     private static final Identifier MODEL_PANEL_ICONS = com.micaftic.morpher.core.api.resource.ResourceApi.nativeId(YesSteveModel.MOD_ID, "texture/model_panel_icons.png");
-    private static final int BG = 0x90171A1D;
-    private static final int PANEL = 0x4A34424A;
-    private static final int PANEL_HOVER = 0x66576B76;
-    private static final int PANEL_ACTIVE = 0x625E7784;
-    private static final int GLASS = 0x60405058;
-    private static final int GLASS_DARK = 0x3822292E;
-    private static final int BORDER = 0x6EE4F5FF;
+    private static final int BG = 0xA0101010;
+    private static final int PANEL = 0xFF373737;
+    private static final int PANEL_HOVER = 0xFF666666;
+    private static final int PANEL_ACTIVE = 0xFF555555;
+    private static final int GLASS = 0xFF303030;
+    private static final int GLASS_DARK = 0xFF202020;
+    private static final int BORDER = 0xFF808080;
     private static final int RED = 0xFFE05252;
     private static final int RED_SOFT = 0x77E05252;
-    private static final int TEXT = 0xFFEDE1CC;
-    private static final int MUTED = 0xFF9A9A9A;
+    private static final int TEXT = 0xFFFFFFFF;
+    private static final int MUTED = 0xFFB0B0B0;
     private static final int ROW = 24;
     private static final int DENSE_MODEL_ROW = 20;
     private static final int MODEL_PAGE_BUTTON_WIDTH = 46;
@@ -660,7 +660,7 @@ public class ModernPlayerModelScreen extends Screen {
     private void renderTab(GuiGraphicsExtractor g, int mouseX, int mouseY, ModelPanelState.Tab tab, int x, int w, IconGlyph icon, Component label) {
         boolean selected = STATE.activeTab == tab;
         boolean hover = inside(mouseX, mouseY, x, this.layout.top, w, this.layout.tabHeight);
-        fill(g, x, this.layout.top, w, this.layout.tabHeight, selected ? PANEL_ACTIVE : hover ? PANEL_HOVER : 0x40303030);
+        VanillaUi.button(g, x, this.layout.top, w, this.layout.tabHeight, true, hover, selected);
         int iconSize = this.layout.tabHeight <= 22 ? 14 : 16;
         int iconGap = iconSize == 14 ? 4 : 6;
         int total = iconSize + iconGap + this.font.width(label);
@@ -674,8 +674,7 @@ public class ModernPlayerModelScreen extends Screen {
     private void renderVerticalTab(GuiGraphicsExtractor g, int mouseX, int mouseY, ModelPanelState.Tab tab, int x, int y, int w, int h, IconGlyph icon, Component label) {
         boolean selected = STATE.activeTab == tab;
         boolean hover = inside(mouseX, mouseY, x, y, w, h);
-        fill(g, x, y, w, h, selected ? PANEL_ACTIVE : hover ? PANEL_HOVER : 0x40303030);
-        border(g, x, y, w, h, selected ? RED : 0x33FFFFFF);
+        VanillaUi.button(g, x, y, w, h, true, hover, selected);
         int iconSize = h <= 22 ? 14 : 16;
         drawIconScaled(g, icon, x + (w - iconSize) / 2, y + (h - iconSize) / 2, iconSize);
         hit(x, y, w, h, label, () -> switchTab(tab));
@@ -1550,11 +1549,7 @@ public class ModernPlayerModelScreen extends Screen {
         int nameH = ModelPickerLayout.nameBandH(ch);
         int coverH = Math.max(1, ch - nameH);
 
-        if (folder) {
-            fill(g, cx, cy, cw, ch, hover ? CARD_FOLDER_HOVER : CARD_FOLDER);
-        } else {
-            fill(g, cx, cy, cw, ch, selected ? CARD_SELECT : hover ? CARD_BASE_HOVER : CARD_BASE);
-        }
+        VanillaUi.slot(g, cx, cy, cw, ch, hover, selected);
 
         if (folder) {
             drawFolderCover(g, entry, cx + 1, cy + 1, cw - 2, coverH - 1);
@@ -1579,7 +1574,7 @@ public class ModernPlayerModelScreen extends Screen {
             }
         }
 
-        border(g, cx, cy, cw, ch, selected ? RED : hover ? CARD_NAME_TEXT : 0x55FFFFFF);
+        border(g, cx, cy, cw, ch, selected ? 0xFFFFFFA0 : hover ? 0xFFFFFFFF : 0xFF141414);
         hit(cx, cy, cw, ch, Component.literal(entry.title()), () -> clickModelEntry(entry));
     }
 
@@ -3943,7 +3938,7 @@ public class ModernPlayerModelScreen extends Screen {
     }
 
     private void renderChip(GuiGraphicsExtractor g, int x, int y, int w, Component label, boolean selected, Runnable action) {
-        fill(g, x, y, w, 15, selected ? RED_SOFT : 0x55303030);
+        VanillaUi.button(g, x, y, w, 15, true, false, selected);
         drawCentered(g, Component.literal(trim(label.getString(), w - 4)), x + w / 2, y + 4, selected ? 0xFFFFFFFF : MUTED);
         hit(x, y, w, 15, label, action);
     }
@@ -3951,16 +3946,14 @@ public class ModernPlayerModelScreen extends Screen {
     private void renderDenseIconButton(GuiGraphicsExtractor g, int mouseX, int mouseY, int x, int y, IconGlyph icon, Component tooltip, Runnable action) {
         int size = 14;
         boolean hover = inside(mouseX, mouseY, x, y, size, size);
-        fill(g, x, y, size, size, hover ? PANEL_HOVER : 0x66303030);
-        border(g, x, y, size, size, hover ? RED : 0x33FFFFFF);
+        VanillaUi.button(g, x, y, size, size, true, hover, false);
         drawIconScaled(g, icon, x, y, size);
         hit(x, y, size, size, tooltip, action);
     }
 
     private void renderIconButton(GuiGraphicsExtractor g, int mouseX, int mouseY, int x, int y, IconGlyph icon, Component tooltip, Runnable action) {
         boolean hover = inside(mouseX, mouseY, x, y, ICON, ICON);
-        fill(g, x, y, ICON, ICON, hover ? PANEL_HOVER : 0x66303030);
-        border(g, x, y, ICON, ICON, hover ? RED : 0x33FFFFFF);
+        VanillaUi.button(g, x, y, ICON, ICON, true, hover, false);
         drawIcon(g, icon, x + 1, y + 1);
         hit(x, y, ICON, ICON, tooltip, action);
     }
@@ -3972,23 +3965,21 @@ public class ModernPlayerModelScreen extends Screen {
     private void renderModeButton(GuiGraphicsExtractor g, int mouseX, int mouseY, int x, int y, int w) {
         boolean hover = inside(mouseX, mouseY, x, y, w, ICON);
         boolean mainland = isMainlandResourceMode();
-        fill(g, x, y, w, ICON, hover ? PANEL_HOVER : mainland ? RED_SOFT : 0x66303030);
-        border(g, x, y, w, ICON, mainland ? RED : hover ? RED : 0x33FFFFFF);
+        VanillaUi.button(g, x, y, w, ICON, true, hover, mainland);
         drawCentered(g, Component.literal(trim(modeLabel().getString(), w - 8)), x + w / 2, y + 5, 0xFFFFFFFF);
         hit(x, y, w, ICON, modeLabel(), this::toggleResourceMode);
     }
 
     private void renderTextButton(GuiGraphicsExtractor g, int mouseX, int mouseY, int x, int y, int w, int h, Component label, Runnable action) {
         boolean hover = inside(mouseX, mouseY, x, y, w, h);
-        fill(g, x, y, w, h, hover ? PANEL_HOVER : 0x66303030);
-        border(g, x, y, w, h, hover ? RED : 0x33FFFFFF);
+        VanillaUi.button(g, x, y, w, h, true, hover, false);
         drawCentered(g, Component.literal(trim(label.getString(), w - 8)), x + w / 2, y + 5, 0xFFFFFFFF);
         hit(x, y, w, h, label, action);
     }
 
     private void renderRowButton(GuiGraphicsExtractor g, int mouseX, int mouseY, int x, int y, int w, int h, Component label, boolean selected, Runnable action) {
         boolean hover = inside(mouseX, mouseY, x, y, w, h);
-        fill(g, x, y, w, h, selected ? PANEL_ACTIVE : hover ? PANEL_HOVER : 0x55303030);
+        VanillaUi.slot(g, x, y, w, h, hover, selected);
         g.text(this.font, label, x + 5, y + 4, selected ? 0xFFFFFFFF : TEXT, false);
         hit(x, y, w, h, label, action);
     }
@@ -4018,23 +4009,18 @@ public class ModernPlayerModelScreen extends Screen {
     }
 
     private void glassPanel(GuiGraphicsExtractor g, int x, int y, int w, int h) {
-        blurGlass(g, x, y, w, h, 0x34F1FBFF, 8.0f);
-        fill(g, x, y, w, h, GLASS);
-        border(g, x, y, w, h, BORDER);
+        VanillaUi.panel(g, x, y, w, h);
     }
 
     private void secondaryGlassPanel(GuiGraphicsExtractor g, int x, int y, int w, int h) {
-        blurGlass(g, x, y, w, h, 0x58F7FBFF, 12.0f);
-        fill(g, x, y, w, h, 0xD21F282E);
-        border(g, x, y, w, h, 0xC8E4F5FF);
+        VanillaUi.panel(g, x, y, w, h);
     }
 
     private void blurGlass(GuiGraphicsExtractor g, int x, int y, int w, int h, int tint, float radius) {
         if (w <= 0 || h <= 0) {
             return;
         }
-        BlurStack.pushBlur(x, y, w, h, 0.0f, radius, tint);
-        BlurStack.flush(g);
+        VanillaUi.panel(g, x, y, w, h);
     }
 
     private void border(GuiGraphicsExtractor g, int x, int y, int w, int h, int color) {

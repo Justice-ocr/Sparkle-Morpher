@@ -1,7 +1,7 @@
 package com.micaftic.morpher.core.gui;
 
 import com.micaftic.morpher.YesSteveModel;
-import com.micaftic.morpher.core.gpu.BlurStack;
+
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
@@ -10,16 +10,16 @@ import net.minecraft.resources.Identifier;
 public final class RoulettePanelStyle {
     public static final Identifier MODEL_PANEL_ICONS = com.micaftic.morpher.core.api.resource.ResourceApi.nativeId(YesSteveModel.MOD_ID, "texture/model_panel_icons.png");
 
-    public static final int BG = 0x90171A1D;
-    public static final int PANEL = 0x4A34424A;
-    public static final int PANEL_HOVER = 0x66576B76;
-    public static final int PANEL_ACTIVE = 0x625E7784;
-    public static final int GLASS = 0x60405058;
-    public static final int BORDER = 0x6EE4F5FF;
+    public static final int BG = 0xA0101010;
+    public static final int PANEL = 0xFF373737;
+    public static final int PANEL_HOVER = 0xFF666666;
+    public static final int PANEL_ACTIVE = 0xFF555555;
+    public static final int GLASS = 0xFF303030;
+    public static final int BORDER = 0xFF808080;
     public static final int RED = 0xFFE05252;
     public static final int RED_SOFT = 0x77E05252;
-    public static final int TEXT = 0xFFEDE1CC;
-    public static final int MUTED = 0xFF9A9A9A;
+    public static final int TEXT = 0xFFFFFFFF;
+    public static final int MUTED = 0xFFB0B0B0;
     public static final int ICON = 18;
 
     private RoulettePanelStyle() {
@@ -66,29 +66,24 @@ public final class RoulettePanelStyle {
     }
 
     public static void glassPanel(GuiGraphicsExtractor g, int x, int y, int w, int h) {
-        blurGlass(g, x, y, w, h, 0x34F1FBFF, 8.0f);
-        fill(g, x, y, w, h, GLASS);
-        border(g, x, y, w, h, BORDER);
+        VanillaUi.panel(g, x, y, w, h);
     }
 
     public static void secondaryGlassPanel(GuiGraphicsExtractor g, int x, int y, int w, int h) {
-        blurGlass(g, x, y, w, h, 0x58F7FBFF, 12.0f);
-        fill(g, x, y, w, h, 0xD21F282E);
-        border(g, x, y, w, h, 0xC8E4F5FF);
+        VanillaUi.panel(g, x, y, w, h);
     }
 
     public static void blurGlass(GuiGraphicsExtractor g, int x, int y, int w, int h, int tint, float radius) {
         if (w <= 0 || h <= 0) {
             return;
         }
-        BlurStack.pushBlur(x, y, w, h, 0.0f, radius, tint);
-        BlurStack.flush(g);
+        // Retained for callers on secondary screens; vanilla panels do not use blur.
+        VanillaUi.panel(g, x, y, w, h);
     }
 
     public static void iconButton(GuiGraphicsExtractor g, int mouseX, int mouseY, int x, int y, Glyph glyph, boolean active) {
         boolean hover = active && inside(mouseX, mouseY, x, y, ICON, ICON);
-        fill(g, x, y, ICON, ICON, !active ? 0x44282828 : hover ? PANEL_HOVER : 0x66303030);
-        border(g, x, y, ICON, ICON, !active ? 0x22888888 : hover ? RED : 0x33FFFFFF);
+        VanillaUi.button(g, x, y, ICON, ICON, active, hover, false);
         drawIcon(g, glyph, x + 1, y + 1);
     }
 

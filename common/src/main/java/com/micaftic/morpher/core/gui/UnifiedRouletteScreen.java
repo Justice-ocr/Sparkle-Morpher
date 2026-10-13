@@ -319,10 +319,9 @@ public class UnifiedRouletteScreen extends Screen {
     private void drawGlassSlice(GuiGraphicsExtractor g, int sliceIndex, float sliceSpan, float inner, float outer, int color, boolean hover) {
         float start = sliceStartOffset() + sliceIndex * sliceSpan + RouletteTheme.GAP_ANGLE_PADDING;
         float end = sliceStartOffset() + (sliceIndex + 1) * sliceSpan - RouletteTheme.GAP_ANGLE_PADDING;
-        Pie.draw(g, centerX, centerY + 2, inner + 1.0f, outer + 1.0f, start, end, RouletteTheme.SLICE_SHADOW, 1.0f);
+        // One strip layer, as in YSM-Multiplayer; avoid multiplying GUI commands
+        // with separate shadow, outer outline and inner-glow passes.
         Pie.draw(g, centerX, centerY, inner, outer, start, end, color, 1.0f);
-        Pie.draw(g, centerX, centerY, Math.max(0.0f, outer - 2.0f), outer, start, end, hover ? 0xD8FFFFFF : RouletteTheme.SLICE_OUTLINE, 1.0f);
-        Pie.draw(g, centerX, centerY, inner, inner + 1.5f, start, end, RouletteTheme.SLICE_INNER_GLOW, 1.0f);
     }
 
     private void drawGearIcon(GuiGraphicsExtractor g, int sliceIndex, float sliceSpan) {
@@ -470,8 +469,8 @@ public class UnifiedRouletteScreen extends Screen {
         if (animatableModel.getEntity() == Minecraft.getInstance().player) {
             boolean locked = AnimationLockEvent.isLocked();
             int tint = locked ? RouletteTheme.LOCK_TINT : RouletteTheme.UNLOCK_TINT;
-            Pie.draw(g, centerX, centerY, 0.0f, RouletteTheme.WHEEL_INNER_R - 2.0f, 0.0f, Pie.tau, tint, 1.0f);
-            Pie.draw(g, centerX, centerY, RouletteTheme.WHEEL_INNER_R - 2.0f, RouletteTheme.WHEEL_INNER_R,
+            Pie.draw(g, centerX, centerY, 0.0f, RouletteTheme.WHEEL_INNER_R, 0.0f, Pie.tau, tint, 1.0f);
+            Pie.draw(g, centerX, centerY, RouletteTheme.WHEEL_INNER_R - 0.65f, RouletteTheme.WHEEL_INNER_R,
                     0.0f, Pie.tau, RouletteTheme.CENTER_RING, 1.0f);
 
             Identifier tex = locked ? RouletteIcons.LOCK : RouletteIcons.UNLOCK;
@@ -513,7 +512,7 @@ public class UnifiedRouletteScreen extends Screen {
         if (!enabled) fill = RouletteTheme.PAGE_BTN_FILL_DISABLED;
         else fill = hover ? RouletteTheme.PAGE_BTN_FILL_HOVER : RouletteTheme.PAGE_BTN_FILL;
         Pie.draw(g, cx, cy, 0.0f, RouletteTheme.PAGE_BTN_RADIUS, 0.0f, Pie.tau, fill, 1.0f);
-        Pie.draw(g, cx, cy, RouletteTheme.PAGE_BTN_RADIUS - 1.5f, RouletteTheme.PAGE_BTN_RADIUS,
+        Pie.draw(g, cx, cy, RouletteTheme.PAGE_BTN_RADIUS - 0.65f, RouletteTheme.PAGE_BTN_RADIUS,
                 0.0f, Pie.tau, RouletteTheme.PAGE_BTN_RING, 1.0f);
 
         Identifier tex = left ? RouletteIcons.ARROW_LEFT : RouletteIcons.ARROW_RIGHT;

@@ -1,5 +1,6 @@
 package com.micaftic.morpher.client.gui.button;
 
+import com.micaftic.morpher.core.gui.VanillaUi;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -10,15 +11,13 @@ import net.minecraft.network.chat.Component;
 import java.util.Collections;
 import java.util.List;
 
+/** Compatibility widget retaining selection and tooltip support with vanilla visuals. */
 public class FlatColorButton extends Button {
-
     private boolean selected;
-
     private List<Component> tooltip;
 
     public FlatColorButton(int x, int y, int width, int height, Component component, OnPress onPress) {
         super(x, y, width, height, component, onPress, DEFAULT_NARRATION);
-        this.selected = false;
     }
 
     public FlatColorButton setTooltipText(String str) {
@@ -32,35 +31,23 @@ public class FlatColorButton extends Button {
     }
 
     public void renderTooltip(GuiGraphicsExtractor guiGraphics, Screen screen, int mouseX, int mouseY) {
-        if (this.isHovered && this.tooltip != null) {
+        if (isHoveredOrFocused() && this.tooltip != null) {
             guiGraphics.setComponentTooltipForNextFrame(Minecraft.getInstance().font, this.tooltip, mouseX, mouseY);
-/*             GuiGraphicsExtractor.renderComponentTooltip(Minecraft.getInstance().font, this.tooltip, mouseX, mouseY); */
         }
     }
 
     @Override
-    protected void extractContents(GuiGraphicsExtractor extractor, int mouseX, int mouseY, float partialTick) {
-        GuiGraphicsExtractor guiGraphics = extractor;
+    protected void extractContents(GuiGraphicsExtractor g, int mouseX, int mouseY, float partialTick) {
+        VanillaUi.button(g, getX(), getY(), width, height, active, isHoveredOrFocused(), selected);
+        if (width <= 4 || height <= 2) return;
         Font font = Minecraft.getInstance().font;
-        if (this.selected) {
-            guiGraphics.fillGradient(getX(), getY(), getX() + this.width, getY() + this.height, -14774017, -14774017);
-        } else {
-            guiGraphics.fillGradient(getX(), getY(), getX() + this.width, getY() + this.height, -12369342, -12369342);
-        }
-        if (isHoveredOrFocused()) {
-            guiGraphics.fillGradient(getX(), getY() + 1, getX() + 1, (getY() + this.height) - 1, -790560, -790560);
-            guiGraphics.fillGradient(getX(), getY(), getX() + this.width, getY() + 1, -790560, -790560);
-            guiGraphics.fillGradient((getX() + this.width) - 1, getY() + 1, getX() + this.width, (getY() + this.height) - 1, -790560, -790560);
-            guiGraphics.fillGradient(getX(), (getY() + this.height) - 1, getX() + this.width, getY() + this.height, -790560, -790560);
-        }
         Component message = getMessage();
         int textWidth = font.width(message);
-        int textX = textWidth <= this.width - 4 ? getX() + (this.width - textWidth) / 2 : getX() + 2;
-        int textY = getY() + (this.height - 8) / 2;
-        guiGraphics.enableScissor(getX() + 1, getY() + 1, getX() + this.width - 1, getY() + this.height - 1);
-        guiGraphics.text(font, message, textX, textY, 0xFFF3F3E0, true);
-        guiGraphics.disableScissor();
-/*         GuiGraphicsExtractor.renderScrollingString(font, getMessage(), getX() + 2, getY(), getX() + getWidth() - 2, getY() + getHeight(), 15986656); */
+        int textX = textWidth <= width - 4 ? getX() + (width - textWidth) / 2 : getX() + 2;
+        int textY = getY() + (height - font.lineHeight) / 2;
+        g.enableScissor(getX() + 2, getY() + 1, getX() + width - 2, getY() + height - 1);
+        g.text(font, message, textX, textY, active ? 0xFFFFFFFF : 0xFFA0A0A0, true);
+        g.disableScissor();
     }
 
     public void setSelected(boolean selected) {

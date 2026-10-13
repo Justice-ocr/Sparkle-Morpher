@@ -47,30 +47,31 @@ public final class RouletteTheme {
     // Background veil
     public static final int BG_VEIL = 0x7A05070A;
 
-    // Wheel slices - translucent frosted-glass plates.
-    public static final int SLICE_IDLE        = 0x785F6B7A;
-    public static final int SLICE_HOVER       = 0xB8DCEBFF;
-    public static final int SLICE_SUBMENU     = 0x806B7488;
-    public static final int SLICE_SUBMENU_HOV = 0xC8FFE3A3;
-    public static final int SLICE_EMPTY       = 0x22384552;
-    public static final int SLICE_OUTLINE     = 0xA8FFFFFF;
-    public static final int SLICE_INNER_GLOW  = 0x36FFFFFF;
-    public static final int SLICE_SHADOW      = 0x3A000000;
+    // YSM-Multiplayer's neutral/teal palette. Opaque plates deliberately avoid
+    // dark seams from alpha compositing overlapping radial strips.
+    public static final int SLICE_IDLE        = 0xFF20252A;
+    public static final int SLICE_HOVER       = 0xFF2F6E62;
+    public static final int SLICE_SUBMENU     = 0xFF425B67;
+    public static final int SLICE_SUBMENU_HOV = 0xFF5CC8A7;
+    public static final int SLICE_EMPTY       = 0xFF181B1E;
+    public static final int SLICE_OUTLINE     = 0xFFB0B0B0;
+    public static final int SLICE_INNER_GLOW  = 0xFF303030;
+    public static final int SLICE_SHADOW      = 0x80000000;
 
     // Wheel inner ring (gear cluster)
-    public static final int GEAR_IDLE         = 0x809AA8BA;
-    public static final int GEAR_HOVER        = 0xD8FFFFFF;
+    public static final int GEAR_IDLE         = 0xFF606060;
+    public static final int GEAR_HOVER        = 0xFF909090;
 
     // Central lock pip
-    public static final int CENTER_FILL       = 0xA02B3440;
-    public static final int CENTER_RING       = 0xB8FFFFFF;
+    public static final int CENTER_FILL       = 0xFF242424;
+    public static final int CENTER_RING       = 0xFFAAAAAA;
     public static final int LOCK_TINT         = 0xFFE94F88;
     public static final int UNLOCK_TINT       = 0xFF7BE0A4;
 
     // Page buttons
-    public static final int PAGE_BTN_FILL          = 0x80616B78;
-    public static final int PAGE_BTN_FILL_HOVER    = 0xC8DCEBFF;
-    public static final int PAGE_BTN_FILL_DISABLED = 0x40555566;
+    public static final int PAGE_BTN_FILL          = 0xFF555555;
+    public static final int PAGE_BTN_FILL_HOVER    = 0xFF808080;
+    public static final int PAGE_BTN_FILL_DISABLED = 0xFF303030;
     public static final int PAGE_BTN_RING          = 0xA8FFFFFF;
     public static final int PAGE_BTN_ICON          = 0xFFFFFFFF;
     public static final int PAGE_BTN_ICON_DISABLED = 0x88FFFFFF;
@@ -81,10 +82,10 @@ public final class RouletteTheme {
     // Text
     public static final int TEXT_LABEL      = 0xFFFFFFFF;
     public static final int TEXT_LABEL_LINK = 0xFFFFE3A3;
-    public static final int TEXT_KEYBIND    = 0xFFDCEBFF;
-    public static final int TEXT_PATH_DIM   = 0xFFB7AFC9;
-    public static final int TEXT_PATH_CUR   = 0xFFFFC857;
-    public static final int TEXT_PAGE       = 0xFFFF8AB4;
+    public static final int TEXT_KEYBIND    = 0xFFDDDDDD;
+    public static final int TEXT_PATH_DIM   = 0xFFAAAAAA;
+    public static final int TEXT_PATH_CUR   = 0xFFFFFFA0;
+    public static final int TEXT_PAGE       = 0xFFFFFFFF;
     public static final int TEXT_STOP       = 0xFFFFE6B5;
     public static final int TEXT_SEPARATOR  = 0xFF7E6A9E;
 
