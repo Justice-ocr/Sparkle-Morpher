@@ -21,13 +21,15 @@
     "client.EntityRenderDispatcherMixin",
     "client.FishingHookAccessor",
     "client.GuiEntityRendererMixin",
+    "client.PictureInPictureRendererMixin",
     "client.InventoryScreenMixin",
     "client.LivingRendererMixin",
     "client.PauseScreenMixin",
     "client.ScreenAccessor",
     "client.ThrowableItemProjectileAccessor",
     "client.WorldRendererMixin",
-    "client.OptionsKeyMappingMixin"
+    "client.OptionsKeyMappingMixin",
+    "client.SystemFontManagerMixin"
   ],
   "mixins": [
     "AbstractArrowEntityMixin"
