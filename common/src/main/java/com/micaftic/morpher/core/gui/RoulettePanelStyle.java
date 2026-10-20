@@ -1,14 +1,13 @@
 package com.micaftic.morpher.core.gui;
 
 import com.micaftic.morpher.YesSteveModel;
-
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
 public final class RoulettePanelStyle {
-    public static final Identifier MODEL_PANEL_ICONS = com.micaftic.morpher.core.api.resource.ResourceApi.nativeId(YesSteveModel.MOD_ID, "texture/model_panel_icons.png");
+    public static final Identifier MODEL_PANEL_ICONS = com.micaftic.morpher.core.api.resource.ResourceApi.nativeId(YesSteveModel.MOD_ID, "texture/ui/lucide.png");
 
     public static final int BG = 0xA0101010;
     public static final int PANEL = 0xFF373737;
@@ -43,7 +42,8 @@ public final class RoulettePanelStyle {
         PLUS(32, 48),
         MINUS(48, 48),
         INFO(96, 48),
-        CHECK(112, 48);
+        CHECK(112, 48), RESOURCE(16,0), USERS(0,64), LOGOUT(80,64),
+        GLOBE(96,64), MORE(16,80), EYE(64,80), FILTER(80,80), UNPLUG(96,80), EDIT(0,96);
 
         public final int u;
         public final int v;
@@ -74,7 +74,7 @@ public final class RoulettePanelStyle {
     }
 
     public static void blurGlass(GuiGraphicsExtractor g, int x, int y, int w, int h, int tint, float radius) {
-        if (w <= 0 || h <= 0) {
+        if (w <= 0 || h <= 0 || radius <= 0) {
             return;
         }
         // Retained for callers on secondary screens; vanilla panels do not use blur.
@@ -88,9 +88,13 @@ public final class RoulettePanelStyle {
     }
 
     public static void drawIcon(GuiGraphicsExtractor g, Glyph glyph, int x, int y) {
-        g.blit(MODEL_PANEL_ICONS, x, y, x + 16, y + 16,
+        drawIconScaled(g,glyph,x,y,16);
+    }
+
+    public static void drawIconScaled(GuiGraphicsExtractor g, Glyph glyph, int x, int y, int size) {
+        g.blit(MODEL_PANEL_ICONS, x, y, x + size, y + size,
                 glyph.u / 128.0f, (glyph.u + 16) / 128.0f,
-                glyph.v / 64.0f, (glyph.v + 16) / 64.0f);
+                glyph.v / 128.0f, (glyph.v + 16) / 128.0f);
     }
 
     public static void drawCentered(GuiGraphicsExtractor g, Font font, Component text, int centerX, int y, int color) {
@@ -112,5 +116,46 @@ public final class RoulettePanelStyle {
 
     public static boolean inside(double px, double py, int x, int y, int w, int h) {
         return px >= x && py >= y && px < x + w && py < y + h;
+    }
+    public static void roundedFill(GuiGraphicsExtractor g,int x,int y,int w,int h,int radius,int color){
+        RoundedRectGeometry.fill((rx,ry,rw,rh,c)->fill(g,rx,ry,rw,rh,c),x,y,w,h,radius,color);
+    }
+    public static void roundedSurface(GuiGraphicsExtractor g,int x,int y,int w,int h,int radius,int color,int outline){
+        roundedFill(g,x,y,w,h,radius,color);
+        RoundedRectGeometry.outline((rx,ry,rw,rh,c)->fill(g,rx,ry,rw,rh,c),x,y,w,h,radius,outline);
+    }
+    public static void roundedBorder(GuiGraphicsExtractor g,int x,int y,int w,int h,int radius,int color){
+        RoundedRectGeometry.outline((rx,ry,rw,rh,c)->fill(g,rx,ry,rw,rh,c),x,y,w,h,radius,color);
+    }
+    /** Clip the logo's textured quad to the same rounded shape on every application page. */
+    public static void applicationLogo(GuiGraphicsExtractor g,int x,int y,int size){
+        var logo=com.micaftic.morpher.core.api.resource.ResourceApi.nativeId(YesSteveModel.MOD_ID,"texture/ui/spm.png");
+        RoundedRectGeometry.fill((rx,ry,rw,rh,c)->g.blit(logo,rx,ry,rx+rw,ry+rh,
+                (rx-x)/(float)size,(rx+rw-x)/(float)size,(ry-y)/(float)size,(ry+rh-y)/(float)size),
+                x,y,size,size,Math.max(3,size/6),0);
+    }
+    public static int applicationMargin(int width){return width<560?6:width<800?7:8;}
+    public static int applicationContentLeft(int width){return applicationMargin(width)+(width<560?28:width<800?30:36)+8;}
+    public static void applicationRail(GuiGraphicsExtractor g,int width,int height,int selected){
+        int p=applicationMargin(width),side=width<560?28:width<800?30:36,logoSize=width<560?20:width<800?22:26;
+        glassPanel(g,p,p,width-2*p,height-2*p);
+        roundedFill(g,p,p,side,height-2*p,5,0x59080808);
+        fill(g,p+side,p,1,height-2*p,0x1AFFFFFF);
+        applicationLogo(g,p+(side-logoSize)/2,p+6,logoSize);
+        Glyph[] icons={Glyph.MODEL,Glyph.RESOURCE,Glyph.USERS,Glyph.SETTINGS};
+        int top=p+logoSize+17;
+        for(int i=0;i<4;i++){
+            int y=top+i*30;
+            if(i==selected){roundedFill(g,p+3,y,side-6,24,3,0x18FFFFFF);fill(g,p,y+4,2,16,RED);}
+            drawIconScaled(g,icons[i],p+(side-12)/2,y+6,12);
+        }
+        drawIconScaled(g,Glyph.LOGOUT,p+(side-12)/2,height-p-24,12);
+    }
+    public static boolean applicationRailClick(double x,double y,int width,int height,java.util.function.IntConsumer navigate){
+        int p=applicationMargin(width),side=width<560?28:width<800?30:36,top=p+(width<560?20:width<800?22:26)+17;
+        if(x<p||x>=p+side)return false;
+        for(int i=0;i<4;i++)if(y>=top+i*30&&y<top+i*30+24){navigate.accept(i);return true;}
+        if(y>=height-p-28&&y<height-p-5){navigate.accept(-1);return true;}
+        return false;
     }
 }

@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>The legacy immediate-draw helpers ({@code PieShader}, {@code PiePortableRenderPath})
  * were removed as dead code in 1.2.5, so this guard now only needs to catch a
- * reintroduced raw OpenGL draw or a lost extractor-recorded fallback.</p>
+ * reintroduced raw OpenGL draw or a lost extractor-recorded radial-strip path.</p>
  */
 class RouletteRenderPathContractTest {
 
@@ -26,8 +26,10 @@ class RouletteRenderPathContractTest {
 
         assertFalse(source.contains("GL11.glDrawArrays"),
                 "Pie must not issue Raw OpenGL draw calls from extractRenderState");
-        assertTrue(source.contains("drawFallback(graphics, centerX, centerY, innerRadius, outerRadius, startAngle, endAngle, rgba)"),
-                "Pie must retain the extractor-recorded fallback path");
+        assertFalse(source.contains("createCommandEncoder("),
+                "Pie must not submit GPU work outside the GUI extraction stream");
+        assertTrue(source.contains("graphics.fill("),
+                "Pie must record its radial strips through GuiGraphicsExtractor");
     }
 
     private static Path findRepoFile(Path... relativePaths) throws IOException {

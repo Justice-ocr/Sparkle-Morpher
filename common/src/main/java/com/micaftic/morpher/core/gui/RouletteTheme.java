@@ -22,10 +22,10 @@ public final class RouletteTheme {
     public static final int DESIGN_HEIGHT = 340;
 
     // ---- Layout (all values are pixel offsets from the screen center) ----
-    public static final float WHEEL_INNER_R = 30.0f;
-    public static final float WHEEL_GEAR_R = 56.0f;
-    public static final float WHEEL_OUTER_R = 128.0f;
-    public static final float WHEEL_OUTLINE_R = 130.0f;
+    public static final float WHEEL_INNER_R = 56.0f;
+    public static final float WHEEL_GEAR_R = 76.0f;
+    public static final float WHEEL_OUTER_R = 151.0f;
+    public static final float WHEEL_OUTLINE_R = 151.0f;
     public static final float GAP_ANGLE_PADDING = 0.02f;
 
     public static final float PAGE_BTN_OFFSET = 160.0f;

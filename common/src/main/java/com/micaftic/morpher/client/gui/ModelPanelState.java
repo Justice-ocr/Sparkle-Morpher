@@ -70,9 +70,14 @@ final class ModelPanelState {
     ModelSource modelSource = ModelSource.LOCAL;
     String selectedCloudInstanceId = "";
     int cloudTabOffset;
-    CloudView cloudView = CloudView.RECENT;
+    final java.util.Set<String> closedCloudTabs = new java.util.LinkedHashSet<>();
+    final List<String> cloudTabOrder = new ArrayList<>();
+    CloudView cloudView = CloudView.ALL;
     ModelFilter modelFilter = ModelFilter.ALL;
     SettingGroup settingGroup = SettingGroup.GENERAL;
+    String settingsPageId;
+    int settingsNavigationScroll;
+    final Map<String, Integer> settingsPageScrolls = new HashMap<>();
     SecondaryPanel secondaryPanel = SecondaryPanel.NONE;
     String modelSearchText = "";
     String cloudSearchText = "";
@@ -99,17 +104,17 @@ final class ModelPanelState {
     String cloudCatalogScope() {
         return switch (cloudView) {
             case MINE -> "mine";
-            case ALL -> "accessible";
+            case ALL -> "public";
             default -> "public";
         };
     }
 
     boolean cloudSearchRequired() {
-        return cloudView == CloudView.PUBLIC && cloudSearchText.trim().isBlank();
+        return false;
     }
 
     boolean canChangeCloudVisibility(boolean owned) {
-        return modelSource != ModelSource.LOCAL && (cloudView == CloudView.MINE || owned);
+        return modelSource != ModelSource.LOCAL && (cloudView == CloudView.MINE && owned);
     }
 
     void saveCloudTab() {
@@ -121,7 +126,7 @@ final class ModelPanelState {
     void restoreCloudTab(String instanceId) {
         CloudTabState saved = cloudTabs.get(instanceId);
         cloudView = saved == null
-                ? (modelSource == ModelSource.COMMUNITY_CLOUD ? CloudView.ALL : CloudView.RECENT)
+                ? CloudView.ALL
                 : saved.view();
         cloudSearchText = saved == null ? "" : saved.search();
         cloudCursor = saved == null ? "" : saved.cursor();
@@ -250,7 +255,10 @@ final class ModelPanelState {
                 case "modelFilter" -> modelFilter = ModelFilter.valueOf(v.toUpperCase(java.util.Locale.ROOT));
                 case "modelSource" -> modelSource = ModelSource.valueOf(v.toUpperCase(java.util.Locale.ROOT));
                 case "cloudView" -> cloudView = CloudView.valueOf(v.toUpperCase(java.util.Locale.ROOT));
-                case "settingGroup" -> settingGroup = SettingGroup.valueOf(v.toUpperCase(java.util.Locale.ROOT));
+                case "settingGroup" -> {
+                    settingGroup = SettingGroup.valueOf(v.toUpperCase(java.util.Locale.ROOT));
+                    settingsPageId = null;
+                }
                 case "secondaryPanel" -> secondaryPanel = SecondaryPanel.valueOf(v.toUpperCase(java.util.Locale.ROOT));
                 case "modelSearchText" -> modelSearchText = clampDev(v);
                 case "cloudSearchText" -> cloudSearchText = clampDev(v);

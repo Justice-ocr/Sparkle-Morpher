@@ -34,6 +34,10 @@ import com.micaftic.morpher.core.api.network.upload.ModelUploadTransport;
  * destinations by this class.</p>
  */
 public final class CloudHttpClient {
+    private <T> CompletableFuture<HttpResponse<T>> sendAsync(HttpRequest request, HttpResponse.BodyHandler<T> handler) {
+        return com.micaftic.morpher.core.network.NetworkAccess.cloud(() -> httpClient.sendAsync(request, handler));
+    }
+
 
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(15);
     private static final Duration UPLOAD_TIMEOUT = Duration.ofMinutes(5);
@@ -95,7 +99,7 @@ public final class CloudHttpClient {
                 .header("Accept", "application/json")
                 .GET()
                 .build();
-        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+        return sendAsync(request, HttpResponse.BodyHandlers.ofString())
                 .thenCompose(response -> {
                     if (response.statusCode() < 200 || response.statusCode() >= 300) {
                         return CompletableFuture.failedFuture(new CloudHttpException(
@@ -130,7 +134,7 @@ public final class CloudHttpClient {
                 .timeout(REQUEST_TIMEOUT)
                 .header("Accept", "application/json")
                 .header("Content-Type", "application/json");
-        return httpClient.sendAsync(
+        return sendAsync(
                         builder.POST(HttpRequest.BodyPublishers.ofString(jsonBody)).build(),
                         HttpResponse.BodyHandlers.ofByteArray())
                 .thenCompose(response -> {
@@ -143,14 +147,24 @@ public final class CloudHttpClient {
 
     /** Bounded metadata transport for negotiated entity capabilities. */
     CompletableFuture<String> visualJson(String method, String path, String jsonBody, int maxResponseBytes) {
+        return visualJson(method,path,jsonBody,maxResponseBytes,null);
+    }
+
+    /** The additional credential is allowed only on the offline publication session endpoints. */
+    CompletableFuture<String> visualJson(String method, String path, String jsonBody, int maxResponseBytes, String offlineSessionToken) {
         if (!java.util.Set.of("POST", "PUT", "DELETE").contains(method)
                 || maxResponseBytes < 1 || maxResponseBytes > 16 * 1024 * 1024) {
             throw new IllegalArgumentException("Invalid visual request budget");
         }
-        HttpRequest request = requestBuilder(path).timeout(REQUEST_TIMEOUT)
+        HttpRequest.Builder builder = requestBuilder(path).timeout(REQUEST_TIMEOUT)
                 .header("Accept", "application/json").header("Content-Type", "application/json")
-                .method(method, HttpRequest.BodyPublishers.ofString(jsonBody, StandardCharsets.UTF_8)).build();
-        return httpClient.sendAsync(request, info -> new BoundedJsonSubscriber(maxResponseBytes)).thenCompose(response -> {
+                .method(method, HttpRequest.BodyPublishers.ofString(jsonBody, StandardCharsets.UTF_8));
+        if(offlineSessionToken!=null){
+            if(!path.matches("/v1/offline-player-sessions/cos_[0-9a-f]{32}(/appearance)?")||!offlineSessionToken.matches("[A-Za-z0-9_-]{43}"))throw new IllegalArgumentException("Invalid offline session header scope");
+            builder.header("X-SPM-Offline-Session",offlineSessionToken);
+        }
+        HttpRequest request=builder.build();
+        return sendAsync(request, info -> new BoundedJsonSubscriber(maxResponseBytes)).thenCompose(response -> {
             if (response.statusCode() < 200 || response.statusCode() >= 300) return CompletableFuture.failedFuture(httpFailure(response));
             try {
                 String text = StandardCharsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
@@ -210,7 +224,7 @@ public final class CloudHttpClient {
                 .header("X-Asset-Format", requiredHeader(assetFormat, "assetFormat"))
                 .header("X-Asset-Sha256", requiredHeader(rawSha256, "rawSha256"))
                 .header("X-Asset-Visibility", requiredHeader(visibility, "visibility"));
-        return httpClient.sendAsync(builder.POST(HttpRequest.BodyPublishers.ofByteArray(content)).build(), HttpResponse.BodyHandlers.ofByteArray());
+        return sendAsync(builder.POST(HttpRequest.BodyPublishers.ofByteArray(content)).build(), HttpResponse.BodyHandlers.ofByteArray());
     }
 
     /** Streams a local file into the Cloud request; the file is never materialized as a byte array. */
@@ -262,7 +276,7 @@ public final class CloudHttpClient {
                 throw new IllegalStateException("Unable to open Cloud upload source", e);
             }
         });
-        return httpClient.sendAsync(builder.POST(body).build(), HttpResponse.BodyHandlers.ofByteArray());
+        return sendAsync(builder.POST(body).build(), HttpResponse.BodyHandlers.ofByteArray());
     }
 
     public CompletableFuture<String> putJson(String path, String jsonBody) {
@@ -270,7 +284,7 @@ public final class CloudHttpClient {
                 .timeout(REQUEST_TIMEOUT)
                 .header("Accept", "application/json")
                 .header("Content-Type", "application/json");
-        return httpClient.sendAsync(
+        return sendAsync(
                         builder.PUT(HttpRequest.BodyPublishers.ofString(jsonBody)).build(),
                         HttpResponse.BodyHandlers.ofByteArray())
                 .thenCompose(response -> {
@@ -289,7 +303,7 @@ public final class CloudHttpClient {
         if (ifNoneMatch != null && !ifNoneMatch.isBlank()) {
             builder.header("If-None-Match", ifNoneMatch);
         }
-        return httpClient.sendAsync(builder.GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+        return sendAsync(builder.GET().build(), HttpResponse.BodyHandlers.ofByteArray());
     }
 
     /** Rechecks ACL before accepting a resident resource; never buffers model bytes. */
@@ -297,9 +311,10 @@ public final class CloudHttpClient {
         String etag = "\"" + sha256 + "\"";
         var request = requestBuilder(path).timeout(REQUEST_TIMEOUT)
                 .header("If-None-Match", etag).GET().build();
-        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofInputStream()).thenApply(response -> {
+        long policyEpoch = com.micaftic.morpher.core.network.NetworkAccess.state().epoch();
+        return sendAsync(request, HttpResponse.BodyHandlers.ofInputStream()).thenApply(response -> {
             try (var body = response.body()) {
-                return (response.statusCode() == 304 || response.statusCode() == 200)
+                return com.micaftic.morpher.core.network.NetworkAccess.current(policyEpoch) && (response.statusCode() == 304 || response.statusCode() == 200)
                         && etag.equals(response.headers().firstValue("ETag").orElse(null));
             } catch (IOException failure) {
                 return false;

@@ -43,6 +43,7 @@ public final class ClientModelBundleAssembler {
     }
 
     public static ClientModelInfo buildParsedBundle(RawYsmModel raw, String modelId) {
+        com.micaftic.morpher.client.peer.PeerMotionSync.register(modelId, com.micaftic.morpher.peer.PeerModelPolicy.from(raw));
         Map<String, OuterFileTexture> mainTextures = new LinkedHashMap<>();
         int textureCount = Math.max(1, raw.mainEntity.textures.size());
 
@@ -55,7 +56,10 @@ public final class ClientModelBundleAssembler {
             BufferedImage img = TextureDecoder.decodeToImage(rt.data, rt.imageFormat, rt.width, rt.height);
             imagesList.add(img);
 
-            byte[] processedData = TextureDecoder.toPng(rt.data, rt.imageFormat, rt.width, rt.height);
+            // The alpha scanner needs the decoded image too: encode this same raster,
+            // rather than decoding a second full copy of non-PNG source textures.
+            byte[] processedData = TextureDecoder.isPng(rt.data)
+                    ? rt.data : TextureDecoder.encodeToPng(img, rt.data);
             OuterFileTexture tex = new OuterFileTexture(processedData, modelId);
 
             Map<ShadersTextureType, OuterFileTexture> suffixTextures = new LinkedHashMap<>();
@@ -98,12 +102,22 @@ public final class ClientModelBundleAssembler {
         GeoModel mainMesh = GeometryBaker.buildMesh(raw.mainEntity.mainModel, context, textureCount, mainScanner, raw.properties.allCutout, specialHandLocatorProfile);
         GeoModel armMesh = raw.mainEntity.armModel != null ? GeometryBaker.buildMesh(raw.mainEntity.armModel, context, textureCount, armScanner, raw.properties.allCutout) : mainMesh;
 
+        // Only geometry baking reads these images. Do not retain every large raster
+        // while parsing animations, scripts, projectile models and vehicles.
+        for (BufferedImage image : imagesList) if (image != null) image.flush();
+        imagesList.clear();
+        java.util.Arrays.fill(imagesArray, null);
+        mainScanner = null;
+        armScanner = null;
+
         GeoModel[] meshes = new GeoModel[]{mainMesh, armMesh};
 
         Map<String, AnimationFile> animations = new LinkedHashMap<>();
         for (Map.Entry<String, RawYsmModel.RawAnimationFile> entry : raw.mainEntity.animationFiles.entrySet()) {
             animations.put(entry.getKey(), new AnimationFile(AnimationMapper.buildAnimations(entry.getValue(), raw.properties.mergeMultilineExpr)));
         }
+
+        KipfelCompatibility.bind(raw, animations, modelId);
 
         List<AnimationControllerFile> controllersList = new ArrayList<>();
         if (raw.mainEntity.animationControllerFiles != null) {
@@ -119,6 +133,7 @@ public final class ClientModelBundleAssembler {
 
         ModelMetadata modelInfo = GuiConfigMapper.buildModelInfo(raw);
         ModelExtraResourcesFile extraResources = buildExtraResources(raw);
+        com.micaftic.morpher.client.animation.molang.AnimationProgramAnalyzer.bind(animations, controllersList, extraResources.getFunctions(), modelId, GuiConfigMapper.programExpressions(raw.properties));
         ProjectileModelFiles[] extraItemModels = buildExtraItemModels(raw, context, raw.properties.mergeMultilineExpr);
         VehicleModelFiles[] extraEntityModels = buildExtraEntityModels(raw, context, raw.properties.mergeMultilineExpr);
         Map<String, OuterFileTexture> extraTextures = buildExtraTextures(raw);
@@ -165,7 +180,8 @@ public final class ClientModelBundleAssembler {
             return ScaleZeroScanResult.NONE;
         }
         boolean found = false;
-        for (RawYsmModel.RawAnimation animation : animationFile.animations.values()) {
+        for (Map.Entry<String, RawYsmModel.RawAnimation> entry : animationFile.animations.entrySet()) {
+            RawYsmModel.RawAnimation animation = entry.getValue();
             if (animation == null || animation.boneAnimations == null) {
                 continue;
             }
@@ -179,6 +195,12 @@ public final class ClientModelBundleAssembler {
                         return ScaleZeroScanResult.UNSAFE;
                     }
                     if (result == KeyframeScaleResult.ZERO) {
+                        // A weapon/tool animation can deliberately hide vanilla equipment while
+                        // showing authored geometry. Only Carry On's own animations may enable
+                        // the compatibility bypass; a model-wide zero-scale heuristic revives it.
+                        if (entry.getKey() == null || !entry.getKey().startsWith("carryon:")) {
+                            return ScaleZeroScanResult.UNSAFE;
+                        }
                         found = true;
                     }
                 }
@@ -291,7 +313,9 @@ public final class ClientModelBundleAssembler {
             byte[] data = entry.getValue().data;
             String molangScript = new String(data, StandardCharsets.UTF_8);
             try {
-                functions.put(name, GeckoLibCache.getMolangParser().parseExpression(molangScript, true));
+                var parser = GeckoLibCache.getMolangParser();
+                try { functions.put(name, parser.parseExpression(molangScript, true)); }
+                finally { GeckoLibCache.releaseParser(parser); }
             } catch (Exception e) {
             }
         }
@@ -333,8 +357,9 @@ public final class ClientModelBundleAssembler {
             for (RawYsmModel.RawTexture rt : sub.textures.values()) {
                 BufferedImage img = TextureDecoder.decodeToImage(rt.data, rt.imageFormat, rt.width, rt.height);
                 imgList.add(img);
-                byte[] processedData = TextureDecoder.toPng(rt.data, rt.imageFormat, rt.width, rt.height);
                 if (texture == null) {
+                    byte[] processedData = TextureDecoder.isPng(rt.data)
+                            ? rt.data : TextureDecoder.encodeToPng(img, rt.data);
                     texture = new OuterFileTexture(processedData, sub.identifier);
                 }
             }
@@ -344,6 +369,7 @@ public final class ClientModelBundleAssembler {
         }
 
         GeoModel mesh = GeometryBaker.buildMesh(sub.model, context, textureCount, subScanner, true);
+        subScanner = null;
 
         Map<String, Animation> allAnimations = new LinkedHashMap<>();
         for (Map.Entry<String, RawYsmModel.RawAnimationFile> entry : sub.animationFiles.entrySet()) {
@@ -375,8 +401,9 @@ public final class ClientModelBundleAssembler {
             for (RawYsmModel.RawTexture rt : sub.textures.values()) {
                 BufferedImage img = TextureDecoder.decodeToImage(rt.data, rt.imageFormat, rt.width, rt.height);
                 imgList.add(img);
-                byte[] processedData = TextureDecoder.toPng(rt.data, rt.imageFormat, rt.width, rt.height);
                 if (texture == null) {
+                    byte[] processedData = TextureDecoder.isPng(rt.data)
+                            ? rt.data : TextureDecoder.encodeToPng(img, rt.data);
                     texture = new OuterFileTexture(processedData, sub.identifier);
                 }
             }
@@ -386,6 +413,7 @@ public final class ClientModelBundleAssembler {
         }
 
         GeoModel mesh = GeometryBaker.buildMesh(sub.model, context, textureCount, subScanner, true);
+        subScanner = null;
 
         Map<String, Animation> allAnimations = new LinkedHashMap<>();
         for (RawYsmModel.RawAnimationFile animFile : sub.animationFiles.values()) {
